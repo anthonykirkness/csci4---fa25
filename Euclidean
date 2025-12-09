@@ -1,9 +1,12 @@
-def distance_3d(x1, y1, z1, x2, y2, z2):
-    return math.sqrt((x2-x1)**2 + (y2-y1)**2 + (z2-z1)**2)
+def euclidean_distance(p1, p2):
+    return math.sqrt(
+        (p2[0] - p1[0])**2 +
+        (p2[1] - p1[1])**2 +
+        (p2[2] - p1[2])**2
+    )
 
 # Example:
-center = (0, 0, 0)
-sun = (-8.2, 0.0, 0.025)
+a = (1, 2, 3)
+b = (4, 6, 9)
 
-d = distance_3d(*center, *sun)
-print(d)
+print(euclidean_distance(a, b))
