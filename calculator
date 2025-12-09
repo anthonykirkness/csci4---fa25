@@ -1,11 +1,25 @@
 def evaluate(x, y, o):
+    # This function evaluates a basic math operation.
+    # We receive two numbers (x and y)
+    # and a symbol (o) that tells us which math operation to do.
+
+    # If the operator is '+', we add x and y.
     if o == '+':
         return x + y
+
+    # If the operator is '-', we subtract y from x.
     elif o == '-':
         return x - y
+
+    # If the operator is '*', we multiply x and y.
     elif o == '*':
         return x * y
+
+    # If the operator is '/', we divide x by y.
     elif o == '/':
         return x / y
+
+    # If the operator is none of the valid symbols,
+    # the operation is not recognized.
     else:
         return "Invalid operation"
