@@ -23,3 +23,52 @@ def evaluate(x, y, o):
     # the operation is not recognized.
     else:
         return "Invalid operation"
+
+# Tests from the assignment 
+
+# 1. 5 + 5
+x = 5
+y = 5
+o = '+'
+print("1) 5 + 5 =", evaluate(x, y, o))
+
+# 2. 1 + (-1)
+x = 1
+y = -1
+o = '+'
+print("2) 1 + (-1) =", evaluate(x, y, o))
+
+# 3. 0 - (-1)
+x = 0
+y = -1
+o = '-'
+print("3) 0 - (-1) =", evaluate(x, y, o))
+
+# 4. 0 / 5
+x = 0
+y = 5
+o = '/'
+print("4) 0 / 5 =", evaluate(x, y, o))
+
+# 5. 4 / 2 / 2  (do it in two steps: (4 / 2) / 2)
+x = 4
+y = 2
+o = '/'
+temp = evaluate(x, y, o)  # 4 / 2
+
+x = temp
+y = 2
+o = '/'
+print("5) 4 / 2 / 2 =", evaluate(x, y, o))
+
+# 6. 2 * 1
+x = 2
+y = 1
+o = '*'
+print("6) 2 * 1 =", evaluate(x, y, o))
+
+# 7. 3 * 2
+x = 3
+y = 2
+o = '*'
+print("7) 3 * 2 =", evaluate(x, y, o))
