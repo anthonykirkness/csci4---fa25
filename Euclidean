@@ -1,3 +1,14 @@
+# Distance is how far apart two points are.
+# If you have Point 1 (x1, y1, z1) and Point 2 (x2, y2, z2):
+# 1. Find how far apart they are along each axis:
+#    dx = x2 - x1
+#    dy = y2 - y1
+#    dz = z2 - z1
+# 2. Square each difference so everything is positive
+#    and to match the Pythagorean theorem.
+# 3. Add the squared differences: dx^2 + dy^2 + dz^2
+# 4. Take the square root to get the real distance.
+
 def euclidean_distance(p1, p2):
     return math.sqrt(
         (p2[0] - p1[0])**2 +
