@@ -1,0 +1,200 @@
+import math
+import random
+
+# -----------------------------
+# PID Controller
+# -----------------------------
+class PID:
+    def __init__(self, kp, ki, kd, integrator_limit=10.0):
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        self.integrator = 0.0
+        self.prev_error = 0.0
+        self.integrator_limit = integrator_limit
+
+    def update(self, error, dt):
+        # Integrator (with anti-windup clamp)
+        self.integrator += error * dt
+        self.integrator = max(-self.integrator_limit, min(self.integrator, self.integrator_limit))
+
+        # Derivative
+        derivative = (error - self.prev_error) / dt
+        self.prev_error = error
+
+        # PID output
+        return self.kp * error + self.ki * self.integrator + self.kd * derivative
+
+
+# -----------------------------
+# Simple quadcopter "plant" model
+# -----------------------------
+class QuadSim:
+    """
+    Very simplified dynamics:
+    - z position + z velocity
+    - roll (phi) + roll rate (p)
+    - pitch (theta) + pitch rate (q)
+    - yaw ignored to keep it readable
+    """
+    def __init__(self):
+        # Physical-ish constants (simplified)
+        self.m = 1.2         # kg
+        self.g = 9.81        # m/s^2
+
+        # rotational inertia (very rough)
+        self.Ix = 0.02
+        self.Iy = 0.02
+
+        # State
+        self.z = 0.0
+        self.vz = 0.0
+
+        self.phi = 0.0       # roll rad
+        self.p = 0.0         # roll rate rad/s
+
+        self.theta = 0.0     # pitch rad
+        self.q = 0.0         # pitch rate rad/s
+
+    def step(self, motor_thrusts, dt):
+        """
+        motor_thrusts: list of 4 thrusts (Newtons), one per motor.
+        """
+        # Total thrust
+        T = sum(motor_thrusts)
+
+        # Torques (super simplified quad "X" configuration)
+        # Motor order: [FL, FR, RR, RL]
+        # Roll torque ~ (right side - left side)
+        # Pitch torque ~ (rear - front)
+        arm = 0.18  # meters, "lever arm"
+        left = motor_thrusts[0] + motor_thrusts[3]
+        right = motor_thrusts[1] + motor_thrusts[2]
+        front = motor_thrusts[0] + motor_thrusts[1]
+        rear = motor_thrusts[2] + motor_thrusts[3]
+
+        tau_roll = (right - left) * arm
+        tau_pitch = (rear - front) * arm
+
+        # Translational acceleration:
+        # In real life, tilt reduces vertical lift by cos(phi)*cos(theta)
+        lift_vertical = T * math.cos(self.phi) * math.cos(self.theta)
+        az = (lift_vertical / self.m) - self.g
+
+        # Rotational accelerations
+        p_dot = tau_roll / self.Ix
+        q_dot = tau_pitch / self.Iy
+
+        # Integrate (Euler)
+        self.vz += az * dt
+        self.z += self.vz * dt
+
+        self.p += p_dot * dt
+        self.phi += self.p * dt
+
+        self.q += q_dot * dt
+        self.theta += self.q * dt
+
+
+# -----------------------------
+# Helpers
+# -----------------------------
+def clamp(x, lo, hi):
+    return max(lo, min(x, hi))
+
+def add_noise(value, std_dev):
+    return value + random.gauss(0.0, std_dev)
+
+def rad(deg):
+    return deg * math.pi / 180.0
+
+def deg(rad_val):
+    return rad_val * 180.0 / math.pi
+
+
+# -----------------------------
+# Control + Simulation
+# -----------------------------
+def run_sim():
+    sim = QuadSim()
+
+    # Setpoints (what we WANT)
+    z_target = 5.0                  # meters
+    roll_target = rad(0.0)          # level
+    pitch_target = rad(0.0)         # level
+
+    # PID controllers
+    # Altitude PID outputs a "thrust correction" around hover thrust.
+    pid_z = PID(kp=6.0, ki=1.5, kd=4.0, integrator_limit=5.0)
+
+    # Attitude PID outputs "torque-like" commands that get mixed into motors.
+    pid_roll = PID(kp=4.0, ki=0.2, kd=1.2, integrator_limit=2.0)
+    pid_pitch = PID(kp=4.0, ki=0.2, kd=1.2, integrator_limit=2.0)
+
+    # Motor / thrust limits
+    max_motor_thrust = 10.0  # N (per motor)
+    min_motor_thrust = 0.0   # N
+
+    # Hover thrust (per motor): mg/4
+    hover_per_motor = sim.m * sim.g / 4.0
+
+    dt = 0.01     # 100 Hz control loop
+    steps = 2000  # 20 seconds
+
+    # Add a "disturbance" later (like a gust)
+    gust_step = 900
+
+    print("t(s)\tz(m)\tvz\troll(deg)\tpitch(deg)\tmotors(N)")
+    for i in range(steps):
+        t = i * dt
+
+        # --- "Sensors": read state with noise ---
+        z_meas = add_noise(sim.z, std_dev=0.02)            # 2 cm noise
+        phi_meas = add_noise(sim.phi, std_dev=rad(0.3))    # 0.3 deg noise
+        theta_meas = add_noise(sim.theta, std_dev=rad(0.3))
+
+        # --- Errors ---
+        z_error = z_target - z_meas
+        roll_error = roll_target - phi_meas
+        pitch_error = pitch_target - theta_meas
+
+        # --- PID outputs ---
+        thrust_correction = pid_z.update(z_error, dt)      # N (total-ish correction style)
+        roll_cmd = pid_roll.update(roll_error, dt)         # "torque command"
+        pitch_cmd = pid_pitch.update(pitch_error, dt)
+
+        # Convert altitude controller output into a total thrust adjustment.
+        # Distribute across 4 motors:
+        base = hover_per_motor + (thrust_correction / 4.0)
+
+        # --- Mixer (very common concept in quadcopters) ---
+        # Motor order: [FL, FR, RR, RL]
+        # Roll: increase right motors, decrease left motors
+        # Pitch: increase rear motors, decrease front motors
+        m0 = base - roll_cmd - pitch_cmd  # FL
+        m1 = base + roll_cmd - pitch_cmd  # FR
+        m2 = base + roll_cmd + pitch_cmd  # RR
+        m3 = base - roll_cmd + pitch_cmd  # RL
+
+        motors = [m0, m1, m2, m3]
+        motors = [clamp(m, min_motor_thrust, max_motor_thrust) for m in motors]
+
+        # --- Disturbance: gust/tilt kick ---
+        if i == gust_step:
+            sim.phi += rad(10.0)      # suddenly tilted 10 degrees
+            sim.theta += rad(-7.0)
+
+        # --- Physics step ---
+        sim.step(motors, dt)
+
+        # Prevent "ground tunneling"
+        if sim.z < 0:
+            sim.z = 0
+            sim.vz = 0
+
+        # Print occasionally
+        if i % 100 == 0:
+            print(f"{t:4.1f}\t{sim.z:5.2f}\t{sim.vz:5.2f}\t{deg(sim.phi):7.2f}\t\t{deg(sim.theta):7.2f}\t\t{[round(m,2) for m in motors]}")
+
+if __name__ == "__main__":
+    run_sim()
